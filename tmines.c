@@ -23,49 +23,47 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "conio.h"
+#include <ncurses.h>
 
 enum { YMAX = 16, XMAX = 16, MINES = 40 };
 enum { FIELD = '#', FLAG = 'P', MINE = 'M', FREE = '_', CURSOR = 'X', WRONG = 'W'};
-enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q' };
+enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q', RESTARTKEY = 'r' };
 enum { STAGE1, STAGE2, STAGE3 };
-enum { DIR_DOWN, DIR_UP, DIR_RIGHT, DIR_LEFT };
 enum { GAME_CONT, GAME_WON, GAME_LOST };
 enum { SHOW_CURSOR, SHOW_NO_CURSOR };
+
+#define YSTART ((int)(LINES/2)-(int)(YMAX/2))
+#define XSTART ((int)(COLS/2)-XMAX)
 
 char field[YMAX][XMAX];     // for printing
 int minefield[YMAX][XMAX];  // minestatus
 
 // status
 int cur_y, cur_x;
-int flags = 0, cleared = 0;
+int flags, cleared;
 
 typedef int fieldfunc(int stage, int y, int x);
 
 void drawfield(int cursormode)
 {
+    clear();
+    
     char tmp = field[cur_y][cur_x];
     if(cursormode == SHOW_CURSOR)
         field[cur_y][cur_x] = CURSOR;
+    
+    mvprintw(YSTART-2, XSTART, "%i/%i", flags, MINES);
+    
     int y, x;
     for(y=0; y<YMAX; y++)
     {
+        move(YSTART+y, XSTART);
         for(x=0; x<XMAX; x++)
-            printf("%c ", field[y][x]);
-        printf("\n");
+            printw("%c ", field[y][x]);
     }
-    printf("%i/%i\n", flags, MINES);
     field[cur_y][cur_x] = tmp;
-}
-
-int getKey()
-{
-    int c = getch();
-    if(c == 27)
-        if(getch() == 91)
-            return getch()%65;
     
-    return c;
+    refresh();
 }
 
 int mod(int m, int n)
@@ -254,13 +252,14 @@ int gameover(int status)
                         field[y][x] = WRONG;
                 }
         drawfield(SHOW_NO_CURSOR);
-        printf("== Game Over ==\n\n");
+        mvprintw(YSTART+YMAX+1, XSTART, "== Game Over ==\n\n");
     }
     else
     {
         drawfield(SHOW_NO_CURSOR);
-        printf("== Game Solved ==\n\n");
+        mvprintw(YSTART+YMAX+1, XSTART, "== Game Solved ==\n\n");
     }
+    refresh();
     return status;
 }
 
@@ -316,10 +315,10 @@ void setcurpos(int dir)
     int ynum = 0, xnum = 0;
     switch(dir)
     {
-        case DIR_DOWN:  ynum = -1; break;
-        case DIR_UP:    ynum =  1; break;
-        case DIR_RIGHT: xnum =  1; break;
-        case DIR_LEFT:  xnum = -1; break;
+        case KEY_DOWN:  ynum =  1; break;
+        case KEY_UP:    ynum = -1; break;
+        case KEY_RIGHT: xnum =  1; break;
+        case KEY_LEFT:  xnum = -1; break;
     }
     cur_y = mod(cur_y+ynum, YMAX);
     cur_x = mod(cur_x+xnum, XMAX);
@@ -327,43 +326,65 @@ void setcurpos(int dir)
 
 int main(int argc, char* args[])
 {
+    initscr();
+    keypad(stdscr, 1);
+    noecho();
+    curs_set(0);
+    
     srand(time(0));
     
+    int c, clicked, running;
+    
+restart:
     cur_y = (int)YMAX/2;
     cur_x = (int)XMAX/2;
-    
+    flags = 0;
+    cleared = 0;
+
     fieldgen();
     drawfield(SHOW_CURSOR);
     
-    int c, clicked;
+    running = 1;
     
     while(1)
     {
-        c = getKey();
+        c = getch();
         clicked = 0;
         switch(c)
         {
-            case DIR_UP:
-            case DIR_DOWN:
-            case DIR_RIGHT:
-            case DIR_LEFT:
-                setcurpos(c);
+            case KEY_UP:
+            case KEY_DOWN:
+            case KEY_RIGHT:
+            case KEY_LEFT:
+                if(running)
+                    setcurpos(c);
                 break;
             case FLAGKEY:
-                flag();
-                clicked = 1;
+                if(running)
+                {
+                    flag();
+                    clicked = 1;
+                }
                 break;
             case CLICKKEY: 
-                if(click() != GAME_CONT)
-                    return 0;
-                clicked = 1;
+                if(running)
+                {
+                    if(click() != GAME_CONT)
+                        running = 0;
+                    else
+                        clicked = 1;
+                }
                 break;
             case QUITKEY:
-                return 0;
+                goto end;
+            case RESTARTKEY:
+                goto restart;
         }
-        drawfield(clicked ? SHOW_NO_CURSOR : SHOW_CURSOR);
+        if(running)
+            drawfield(clicked ? SHOW_NO_CURSOR : SHOW_CURSOR);
     }
-    
-    return 1;
+end:
+    endwin();
+    return 0;
 }
 

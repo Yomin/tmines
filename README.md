@@ -1,7 +1,9 @@
 # tmines
 
-Terminal based minesweeper.
+Ncurses based minesweeper.
 
 ## todo
 
-Draw field with ncurses.
+- colorize fields
+- add clock
+- safe first click
