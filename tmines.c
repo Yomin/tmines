@@ -23,12 +23,15 @@
 #include <stdlib.h>
 #include <time.h>
 #include <ncurses.h>
+#include <signal.h>
+#include <sys/time.h>
 
 enum { YMAX = 16, XMAX = 16, MINES = 40 };
 enum { FIELD = '#', FLAG = 'P', MINE = 'M', FREE = ' ', WRONG = 'W'};
 enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q', RESTARTKEY = 'r' };
 enum { STAGE1, STAGE2, STAGE3 };
 enum { GAME_CONT, GAME_WON, GAME_LOST };
+enum { STATE_STOPPED, STATE_INIT, STATE_RUNNING };
 
 #define YSTART ((int)(LINES/2)-(int)(YMAX/2))
 #define XSTART ((int)(COLS/2)-XMAX)
@@ -40,14 +43,17 @@ int color[128];             // field colorcodes
 // status
 int cur_y, cur_x;
 int flags, cleared;
+time_t startTime, currentTime;
 
 typedef int fieldfunc(int stage, int y, int x);
 
-void drawfield()
+void draw_field()
 {
     clear();
     
     mvprintw(YSTART-2, XSTART, "%i/%i", flags, MINES);
+    
+    mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
     
     int y, x, c;
     for(y=0; y<YMAX; y++)
@@ -101,7 +107,7 @@ int exec_fieldfunc(int y, int x, fieldfunc func)
 }
 
 // fieldfunc
-int countmines(int stage, int y, int x)
+int count_mines(int stage, int y, int x)
 {
     static int c;
     switch(stage)
@@ -118,7 +124,7 @@ int countmines(int stage, int y, int x)
     return -1;
 }
 
-void fieldgen()
+void gen_field()
 {
     int y, x, m;
     for(y=0; y<YMAX; y++)
@@ -140,10 +146,10 @@ void fieldgen()
     for(y=0; y<YMAX; y++) 
         for(x=0; x<XMAX; x++)
             if(minefield[y][x] != 9)
-                minefield[y][x] = exec_fieldfunc(y, x, countmines);
+                minefield[y][x] = exec_fieldfunc(y, x, count_mines);
 }
 
-void explodezero(int y, int x);
+void explode_zero(int y, int x);
 
 // fieldfunc
 int zero(int stage, int y, int x)
@@ -156,7 +162,7 @@ int zero(int stage, int y, int x)
             if(field[y][x] == FIELD)
             {
                 if(minefield[y][x] == 0)
-                    explodezero(y, x);
+                    explode_zero(y, x);
                 else
                 {
                     field[y][x] = (char)(minefield[y][x]+48);
@@ -170,7 +176,7 @@ int zero(int stage, int y, int x)
     return -1;
 }
 
-void explodezero(int y, int x) {
+void explode_zero(int y, int x) {
     if(field[y][x] == FIELD)
         cleared++;
     field[y][x] = FREE;
@@ -178,7 +184,7 @@ void explodezero(int y, int x) {
 }
 
 // fieldfunc
-int countflags(int stage, int y, int x)
+int count_flags(int stage, int y, int x)
 {
     static int c;
     switch(stage) {
@@ -207,7 +213,7 @@ int explode(int stage, int y, int x)
             if(field[y][x] == FIELD)
             {
                 if(minefield[y][x] == 0)
-                    explodezero(y, x);
+                    explode_zero(y, x);
                 else if(minefield[y][x] == 9)
                 {
                     clear = 0;
@@ -226,9 +232,9 @@ int explode(int stage, int y, int x)
     return -1;
 }
 
-int explodefield(int y, int x)
+int explode_field(int y, int x)
 {
-    if(field[y][x] == FLAG || minefield[y][x] != exec_fieldfunc(y, x, countflags))
+    if(field[y][x] == FLAG || minefield[y][x] != exec_fieldfunc(y, x, count_flags))
         return 1;
     else
     {
@@ -255,12 +261,12 @@ int gameover(int status)
                     if(field[y][x] == FLAG)
                         field[y][x] = WRONG;
                 }
-        drawfield();
+        draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Over ==\n\n");
     }
     else
     {
-        drawfield();
+        draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Solved ==\n\n");
     }
     refresh();
@@ -280,14 +286,14 @@ int click()
     {
         if(field[cur_y][cur_x] != FIELD)
         {
-            if(!explodefield(cur_y, cur_x))
+            if(!explode_field(cur_y, cur_x))
                 return gameover(GAME_LOST);
         }
         else
         {
             int c = minefield[cur_y][cur_x];
             if(c == 0)
-                explodezero(cur_y, cur_x);
+                explode_zero(cur_y, cur_x);
             else
             {
                 field[cur_y][cur_x] = (char)(c+48);
@@ -314,7 +320,7 @@ void flag()
     }
 }
 
-void setcurpos(int dir)
+void set_curpos(int dir)
 {
     int ynum = 0, xnum = 0;
     switch(dir)
@@ -326,6 +332,35 @@ void setcurpos(int dir)
     }
     cur_y = mod(cur_y+ynum, YMAX);
     cur_x = mod(cur_x+xnum, XMAX);
+}
+
+void handle_signal(int signal)
+{
+    currentTime = difftime(time(0), startTime);
+    mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
+    refresh();
+}
+
+void start_time()
+{
+    struct itimerval timerval;
+    timerval.it_interval.tv_sec = 1;
+    timerval.it_interval.tv_usec = 0;
+    timerval.it_value.tv_sec = 1;
+    timerval.it_value.tv_usec = 0;
+    startTime = time(0);
+    currentTime = 0;
+    setitimer(ITIMER_REAL, &timerval, 0);
+}
+
+void stop_time()
+{
+    struct itimerval timerval;
+    timerval.it_interval.tv_sec = 0;
+    timerval.it_interval.tv_usec = 0;
+    timerval.it_value.tv_sec = 0;
+    timerval.it_value.tv_usec = 0;
+    setitimer(ITIMER_REAL, &timerval, 0);
 }
 
 int main(int argc, char* args[])
@@ -362,7 +397,9 @@ int main(int argc, char* args[])
     
     srand(time(0));
     
-    int c, running;
+    signal(SIGALRM, handle_signal);
+    
+    int c, state;
     
 restart:
     cur_y = (int)YMAX/2;
@@ -370,10 +407,11 @@ restart:
     flags = 0;
     cleared = 0;
 
-    fieldgen();
-    drawfield();
+    gen_field();
+    currentTime = 0;
+    draw_field();
     
-    running = 1;
+    state = STATE_INIT;
     
     while(1)
     {
@@ -384,24 +422,36 @@ restart:
             case KEY_DOWN:
             case KEY_RIGHT:
             case KEY_LEFT:
-                if(running)
-                    setcurpos(c);
+                if(state != STATE_STOPPED)
+                    set_curpos(c);
                 break;
             case FLAGKEY:
-                if(running)
+                if(state != STATE_STOPPED)
                     flag();
                 break;
-            case CLICKKEY: 
-                if(running && click() != GAME_CONT)
-                    running = 0;
+            case CLICKKEY:
+                switch(state)
+                {
+                    case STATE_INIT:
+                        start_time();
+                        state = STATE_RUNNING;
+                    case STATE_RUNNING:
+                        if(click() != GAME_CONT)
+                        {
+                            stop_time();
+                            state = STATE_STOPPED;
+                        }
+                }
                 break;
             case QUITKEY:
+                stop_time();
                 goto end;
             case RESTARTKEY:
+                stop_time();
                 goto restart;
         }
-        if(running)
-            drawfield();
+        if(state != STATE_STOPPED)
+            draw_field();
     }
 end:
     endwin();
