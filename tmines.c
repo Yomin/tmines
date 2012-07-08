@@ -20,23 +20,22 @@
  * THE SOFTWARE.
  */
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <ncurses.h>
 
 enum { YMAX = 16, XMAX = 16, MINES = 40 };
-enum { FIELD = '#', FLAG = 'P', MINE = 'M', FREE = '_', CURSOR = 'X', WRONG = 'W'};
+enum { FIELD = '#', FLAG = 'P', MINE = 'M', FREE = ' ', WRONG = 'W'};
 enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q', RESTARTKEY = 'r' };
 enum { STAGE1, STAGE2, STAGE3 };
 enum { GAME_CONT, GAME_WON, GAME_LOST };
-enum { SHOW_CURSOR, SHOW_NO_CURSOR };
 
 #define YSTART ((int)(LINES/2)-(int)(YMAX/2))
 #define XSTART ((int)(COLS/2)-XMAX)
 
 char field[YMAX][XMAX];     // for printing
 int minefield[YMAX][XMAX];  // minestatus
+int color[128];             // field colorcodes
 
 // status
 int cur_y, cur_x;
@@ -44,24 +43,29 @@ int flags, cleared;
 
 typedef int fieldfunc(int stage, int y, int x);
 
-void drawfield(int cursormode)
+void drawfield()
 {
     clear();
     
-    char tmp = field[cur_y][cur_x];
-    if(cursormode == SHOW_CURSOR)
-        field[cur_y][cur_x] = CURSOR;
-    
     mvprintw(YSTART-2, XSTART, "%i/%i", flags, MINES);
     
-    int y, x;
+    int y, x, c;
     for(y=0; y<YMAX; y++)
     {
         move(YSTART+y, XSTART);
         for(x=0; x<XMAX; x++)
-            printw("%c ", field[y][x]);
+        {
+            c = field[y][x];
+            addch(c | color[(int)c]);
+            if(c == FLAG && x<XMAX-1 && field[y][x+1] == FLAG)
+                addch(' ' | color[FLAG]);
+            else
+                addch(' ');
+        }
     }
-    field[cur_y][cur_x] = tmp;
+    
+    c = field[cur_y][cur_x];
+    mvaddch(YSTART+cur_y, XSTART+cur_x*2, c | A_REVERSE);
     
     refresh();
 }
@@ -251,12 +255,12 @@ int gameover(int status)
                     if(field[y][x] == FLAG)
                         field[y][x] = WRONG;
                 }
-        drawfield(SHOW_NO_CURSOR);
+        drawfield();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Over ==\n\n");
     }
     else
     {
-        drawfield(SHOW_NO_CURSOR);
+        drawfield();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Solved ==\n\n");
     }
     refresh();
@@ -331,9 +335,34 @@ int main(int argc, char* args[])
     noecho();
     curs_set(0);
     
+    start_color();
+    init_pair( 1, COLOR_BLACK, COLOR_BLACK);
+    init_pair( 2, COLOR_RED, COLOR_BLACK);
+    init_pair( 3, COLOR_GREEN, COLOR_BLACK);
+    init_pair( 4, COLOR_YELLOW, COLOR_BLACK);
+    init_pair( 5, COLOR_BLUE, COLOR_BLACK);
+    init_pair( 6, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair( 7, COLOR_CYAN, COLOR_BLACK);
+    init_pair( 8, COLOR_WHITE, COLOR_BLACK);
+    init_pair( 9, COLOR_BLACK, COLOR_RED);
+    init_pair(10, COLOR_BLACK, COLOR_YELLOW);
+    color[FREE]   = COLOR_PAIR(1);
+    color[FIELD]  = COLOR_PAIR(8);
+    color[FLAG]   = COLOR_PAIR(10);
+    color[MINE]   = COLOR_PAIR(2);
+    color[WRONG]  = COLOR_PAIR(9);
+    color['1']    = COLOR_PAIR(5);
+    color['2']    = COLOR_PAIR(3);
+    color['3']    = COLOR_PAIR(2);
+    color['4']    = COLOR_PAIR(4);
+    color['5']    = COLOR_PAIR(7);
+    color['6']    = COLOR_PAIR(6);
+    color['7']    = COLOR_PAIR(6);
+    color['8']    = COLOR_PAIR(6);
+    
     srand(time(0));
     
-    int c, clicked, running;
+    int c, running;
     
 restart:
     cur_y = (int)YMAX/2;
@@ -342,14 +371,13 @@ restart:
     cleared = 0;
 
     fieldgen();
-    drawfield(SHOW_CURSOR);
+    drawfield();
     
     running = 1;
     
     while(1)
     {
         c = getch();
-        clicked = 0;
         switch(c)
         {
             case KEY_UP:
@@ -361,19 +389,11 @@ restart:
                 break;
             case FLAGKEY:
                 if(running)
-                {
                     flag();
-                    clicked = 1;
-                }
                 break;
             case CLICKKEY: 
-                if(running)
-                {
-                    if(click() != GAME_CONT)
-                        running = 0;
-                    else
-                        clicked = 1;
-                }
+                if(running && click() != GAME_CONT)
+                    running = 0;
                 break;
             case QUITKEY:
                 goto end;
@@ -381,7 +401,7 @@ restart:
                 goto restart;
         }
         if(running)
-            drawfield(clicked ? SHOW_NO_CURSOR : SHOW_CURSOR);
+            drawfield();
     }
 end:
     endwin();
