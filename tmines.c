@@ -32,6 +32,7 @@ enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q', RESTARTKEY = 'r' };
 enum { STAGE1, STAGE2, STAGE3 };
 enum { GAME_CONT, GAME_WON, GAME_LOST };
 enum { STATE_STOPPED, STATE_INIT, STATE_RUNNING };
+enum { DRAW_SIMPLE, DRAW_ALL };
 
 #define YSTART ((int)(LINES/2)-(int)(YMAX/2))
 #define XSTART ((int)(COLS/2)-XMAX)
@@ -41,10 +42,10 @@ int minefield[YMAX][XMAX];  // minestatus
 int color[128];             // field colorcodes
 
 // status
-int cur_y, cur_x;
+int cur_y, cur_x, cur_y_old, cur_x_old;
 int flags, cleared;
 time_t startTime, currentTime;
-char drawing;
+char drawing, drawMode;
 
 typedef int fieldfunc(int stage, int y, int x);
 
@@ -52,29 +53,52 @@ void draw_field()
 {
     drawing = 1;
     
-    clear();
+    if(drawMode == DRAW_ALL)
+        clear();
     
-    mvprintw(YSTART-2, XSTART, "%i/%i", flags, MINES);
+    mvprintw(YSTART-2, XSTART, "%02i/%i", flags, MINES);
     
     mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
     
     int y, x, c;
-    for(y=0; y<YMAX; y++)
-    {
-        move(YSTART+y, XSTART);
-        for(x=0; x<XMAX; x++)
+    
+    if(drawMode == DRAW_ALL)
+        for(y=0; y<YMAX; y++)
         {
-            c = field[y][x];
-            addch(c | color[(int)c]);
-            if(c == FLAG && x<XMAX-1 && field[y][x+1] == FLAG)
+            move(YSTART+y, XSTART);
+            for(x=0; x<XMAX; x++)
+            {
+                c = field[y][x];
+                addch(c | color[(int)c]);
+                if(c == FLAG && x<XMAX-1 && field[y][x+1] == FLAG)
+                    addch(' ' | color[FLAG]);
+                else
+                    addch(' ');
+            }
+        }
+    
+    c = field[cur_y][cur_x];
+    mvaddch(YSTART+cur_y, XSTART+cur_x*2, c | A_REVERSE);
+    
+    if(drawMode == DRAW_SIMPLE)
+    {
+        if(cur_x<XMAX-1)
+        {
+            if(c == FLAG && field[cur_y][cur_x+1] == FLAG)
                 addch(' ' | color[FLAG]);
             else
                 addch(' ');
         }
+        if(cur_x>0)
+        {
+            if(c == FLAG && field[cur_y][cur_x-1] == FLAG)
+                mvaddch(YSTART+cur_y, XSTART+cur_x*2-1, ' ' | color[FLAG]);
+            else
+                mvaddch(YSTART+cur_y, XSTART+cur_x*2-1, ' ');
+        }
+        c = field[cur_y_old][cur_x_old];
+        mvaddch(YSTART+cur_y_old, XSTART+cur_x_old*2, c | color[(int)c]);
     }
-    
-    c = field[cur_y][cur_x];
-    mvaddch(YSTART+cur_y, XSTART+cur_x*2, c | A_REVERSE);
     
     refresh();
     
@@ -272,11 +296,13 @@ int gameover(int status)
                     if(field[y][x] == FLAG)
                         field[y][x] = WRONG;
                 }
+        drawMode = DRAW_ALL;
         draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Over ==\n\n");
     }
     else
     {
+        drawMode = DRAW_ALL;
         draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Solved ==\n\n");
     }
@@ -297,6 +323,7 @@ int click()
     {
         if(field[cur_y][cur_x] != FIELD)
         {
+            drawMode = DRAW_ALL;
             if(!explode_field(cur_y, cur_x))
                 return gameover(GAME_LOST);
         }
@@ -304,7 +331,10 @@ int click()
         {
             int c = minefield[cur_y][cur_x];
             if(c == 0)
+            {
+                drawMode = DRAW_ALL;
                 explode_zero(cur_y, cur_x);
+            }
             else
             {
                 field[cur_y][cur_x] = (char)(c+48);
@@ -341,6 +371,8 @@ void set_curpos(int dir)
         case KEY_RIGHT: xnum =  1; break;
         case KEY_LEFT:  xnum = -1; break;
     }
+    cur_y_old = cur_y;
+    cur_x_old = cur_x;
     cur_y = mod(cur_y+ynum, YMAX);
     cur_x = mod(cur_x+xnum, XMAX);
 }
@@ -425,12 +457,14 @@ restart:
     currentTime = 0;
     
     reset_field();
+    drawMode = DRAW_ALL;
     draw_field();
     
     state = STATE_INIT;
     
     while(1)
     {
+        drawMode = DRAW_SIMPLE;
         c = getch();
         switch(c)
         {
