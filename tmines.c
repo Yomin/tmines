@@ -26,7 +26,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
-enum { YMAX = 16, XMAX = 16, MINES = 40 };
+enum { YMAX = 16, XMAX = 30, MINES = 99 };
 enum { FIELD = '#', FLAG = 'P', MINE = 'M', FREE = ' ', WRONG = 'W'};
 enum { FLAGKEY = 'a', CLICKKEY = 'd', QUITKEY = 'q', RESTARTKEY = 'r' };
 enum { STAGE1, STAGE2, STAGE3 };
@@ -124,22 +124,28 @@ int count_mines(int stage, int y, int x)
     return -1;
 }
 
-void gen_field()
+void reset_field()
 {
-    int y, x, m;
+    int y, x;
     for(y=0; y<YMAX; y++)
         for(x=0; x<XMAX; x++)
         {
             field[y][x] = FIELD;
             minefield[y][x] = 0;
         }
+}
+
+void gen_field()
+{
+    int y, x, m;
     
     for(m=0; m<MINES; m++)
     {
         do {
             y = rand()%YMAX;
             x = rand()%XMAX;
-        } while(minefield[y][x] == 9);
+        } while(minefield[y][x] == 9 ||
+            (y >= cur_y-1 && y <= cur_y+1 && x >= cur_x-1 && x <= cur_x+1));
         minefield[y][x] = 9;
     }
     
@@ -406,9 +412,9 @@ restart:
     cur_x = (int)XMAX/2;
     flags = 0;
     cleared = 0;
-
-    gen_field();
     currentTime = 0;
+    
+    reset_field();
     draw_field();
     
     state = STATE_INIT;
@@ -433,6 +439,7 @@ restart:
                 switch(state)
                 {
                     case STATE_INIT:
+                        gen_field();
                         start_time();
                         state = STATE_RUNNING;
                     case STATE_RUNNING:
