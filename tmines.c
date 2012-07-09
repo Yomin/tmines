@@ -44,11 +44,14 @@ int color[128];             // field colorcodes
 int cur_y, cur_x;
 int flags, cleared;
 time_t startTime, currentTime;
+char drawing;
 
 typedef int fieldfunc(int stage, int y, int x);
 
 void draw_field()
 {
+    drawing = 1;
+    
     clear();
     
     mvprintw(YSTART-2, XSTART, "%i/%i", flags, MINES);
@@ -74,6 +77,8 @@ void draw_field()
     mvaddch(YSTART+cur_y, XSTART+cur_x*2, c | A_REVERSE);
     
     refresh();
+    
+    drawing = 0;
 }
 
 int mod(int m, int n)
@@ -343,8 +348,11 @@ void set_curpos(int dir)
 void handle_signal(int signal)
 {
     currentTime = difftime(time(0), startTime);
-    mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
-    refresh();
+    if(!drawing)
+    {
+        mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
+        refresh();
+    }
 }
 
 void start_time()
@@ -404,6 +412,8 @@ int main(int argc, char* args[])
     srand(time(0));
     
     signal(SIGALRM, handle_signal);
+    
+    drawing = 0;
     
     int c, state;
     
