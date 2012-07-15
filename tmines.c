@@ -33,6 +33,7 @@ enum { STAGE1, STAGE2, STAGE3 };
 enum { GAME_CONT, GAME_WON, GAME_LOST };
 enum { STATE_STOPPED, STATE_INIT, STATE_RUNNING };
 enum { DRAW_SIMPLE, DRAW_ALL };
+enum { SMILEY_NORMAL = ')', SMILEY_CLICK = '/', SMILEY_FLAG = '|', SMILEY_WON = 'D', SMILEY_LOST = '(' };
 
 #define YSTART ((int)(LINES/2)-(int)(YMAX/2))
 #define XSTART ((int)(COLS/2)-XMAX)
@@ -45,7 +46,7 @@ int color[128];             // field colorcodes
 int cur_y, cur_x, cur_y_old, cur_x_old;
 int flags, cleared;
 time_t startTime, currentTime;
-char drawing, drawMode;
+char drawing, drawMode, drawSmiley;
 
 typedef int fieldfunc(int stage, int y, int x);
 
@@ -57,7 +58,7 @@ void draw_field()
         clear();
     
     mvprintw(YSTART-2, XSTART, "%02i/%i", flags, MINES);
-    
+    mvprintw(YSTART-2, XSTART+XMAX-1, ":%c", drawSmiley);
     mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
     
     int y, x, c;
@@ -297,12 +298,14 @@ int gameover(int status)
                         field[y][x] = WRONG;
                 }
         drawMode = DRAW_ALL;
+        drawSmiley = SMILEY_LOST;
         draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Over ==\n\n");
     }
     else
     {
         drawMode = DRAW_ALL;
+        drawSmiley = SMILEY_WON;
         draw_field();
         mvprintw(YSTART+YMAX+1, XSTART, "== Game Solved ==\n\n");
     }
@@ -312,6 +315,7 @@ int gameover(int status)
 
 int click()
 {
+    drawSmiley = SMILEY_CLICK;
     if(field[cur_y][cur_x] == FLAG)
         return GAME_CONT;
     else if(minefield[cur_y][cur_x] == 9)
@@ -349,6 +353,7 @@ int click()
 
 void flag()
 {
+    drawSmiley = SMILEY_FLAG;
     if(field[cur_y][cur_x] == FLAG)
     {
         field[cur_y][cur_x] = FIELD;
@@ -382,6 +387,7 @@ void handle_signal(int signal)
     currentTime = difftime(time(0), startTime);
     if(!drawing)
     {
+        mvprintw(YSTART-2, XSTART+XMAX-1, ":%c", drawSmiley);
         mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
         refresh();
     }
@@ -458,6 +464,7 @@ restart:
     
     reset_field();
     drawMode = DRAW_ALL;
+    drawSmiley = SMILEY_NORMAL;
     draw_field();
     
     state = STATE_INIT;
@@ -465,6 +472,7 @@ restart:
     while(1)
     {
         drawMode = DRAW_SIMPLE;
+        drawSmiley = SMILEY_NORMAL;
         c = getch();
         switch(c)
         {

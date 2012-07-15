@@ -13,4 +13,3 @@ Ncurses based minesweeper.
 
 - highscore
 - field size options
-- add smiley
