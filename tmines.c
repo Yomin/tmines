@@ -61,13 +61,25 @@ char drawing, drawMode, drawSmiley;
 
 typedef int fieldfunc(int stage, int y, int x);
 
+void draw_time()
+{
+    int d = XMAX-3 < 5 ? 5-XMAX+3 : 0;
+    mvprintw(YSTART-2, XSTART+XMAX*2-6+d, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
+}
+
+void draw_smiley()
+{
+    mvprintw(YSTART-2, XSTART+XMAX-1, ":%c", drawSmiley);
+}
+
 void draw_field()
 {
     drawing = 1;
     
-    mvprintw(YSTART-2, XSTART, "%02i/%02i", flags, MINES);
-    mvprintw(YSTART-2, XSTART+XMAX-1, ":%c", drawSmiley);
-    mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
+    int d = XMAX-2 < 5 ? 5-XMAX+2 : 0;
+    mvprintw(YSTART-2, XSTART-d, "%02i/%02i", flags, MINES);
+    draw_smiley();
+    draw_time();
     
     int y, x, c;
     
@@ -384,21 +396,27 @@ void handle_signal(int signal)
     currentTime = difftime(time(0), startTime);
     if(!drawing)
     {
-        mvprintw(YSTART-2, XSTART+XMAX-1, ":%c", drawSmiley);
-        mvprintw(YSTART-2, XSTART+XMAX*2-6, "%02i:%02i", (int)currentTime/60, (int)currentTime%60);
+        draw_smiley();
+        draw_time();
         refresh();
     }
 }
 
-int input(const char* msg)
+int input(const char* msg, int min)
 {
     char buf[256];
+    int i;
     while(1)
     {
         printw("%s", msg);
         getnstr(buf, 256);
         if(strspn(buf, "0123456789") == strlen(buf))
-            return atoi(buf);
+        {
+            i = atoi(buf);
+            if(i >= min)
+                return i;
+        }
+            
     }
 }
 
@@ -552,9 +570,9 @@ restart:
                 clear();
                 echo();
                 curs_set(1);
-                YMAX = input("height: ");
-                XMAX = input("width: ");
-                MINES = input("mines: ");
+                YMAX = input("height: ", 4);
+                XMAX = input("width: ", 4);
+                MINES = input("mines: ", 1);
                 noecho();
                 curs_set(0);
                 goto restart;
